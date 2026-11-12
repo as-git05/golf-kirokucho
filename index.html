@@ -185,6 +185,9 @@ table.st{border-collapse:collapse;width:100%;font-size:13px}
 .note{font-size:12px;color:var(--muted);line-height:1.6;margin:0}
 .status{font-size:12px;color:var(--muted);text-align:center}
 .confirm{display:flex;gap:8px;align-items:center;font-size:13px;flex-wrap:wrap}
+.copybox{display:flex;flex-direction:column;gap:6px}
+.copybox textarea{min-height:160px;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+.btn.ask{background:var(--putt);color:#fff;border-color:var(--putt)}
 @media (prefers-reduced-motion:reduce){.club:active{transform:none}}
 </style>
 </head><body>
@@ -495,13 +498,38 @@ function renderDetail(){
     <div class="chips">${[...CLUBS,"PT","ペナ"].filter(c=>cnt[c]).map(c=>`<span>${c==="PT"?"パター":c} ×${cnt[c]}</span>`).join("")}</div>
     ${memos?`<ul class="memolist">${memos}</ul>`:""}
     ${r.memo?`<p class="note" style="white-space:pre-wrap;color:var(--ink)">${esc(r.memo)}</p>`:""}
+    <div class="row"><button class="btn ask" id="dAsk">Claudeに相談用にコピー</button></div><div class="copybox" id="dBox" hidden></div>
     <div class="row"><button class="btn pri" id="dOpen">このラウンドを開いて入力</button>
       ${delAsk?`<span class="confirm">本当に削除しますか？<button class="btn danger" id="dYes">削除する</button><button class="btn ghost" id="dNo">やめる</button></span>`:`<button class="link" id="dDel">削除</button>`}</div>
   </div>`;
   $("dClose").onclick=()=>{detailId=null;renderDetail()};
+  $("dAsk").onclick=()=>copyFor($("dAsk"),$("dBox"),exportText([r]));
   $("dOpen").onclick=()=>{openId=detailId;cur=Math.max(0,ROUNDS[openId].holes.findIndex(h=>!played(h)));if(cur<0)cur=0;try{localStorage.setItem(LSO,openId)}catch(e){}go("play")};
   if(delAsk){$("dNo").onclick=()=>{delAsk=false;renderDetail()};$("dYes").onclick=async()=>{const id=detailId;delete ROUNDS[id];if(openId===id)openId=null;detailId=null;delAsk=false;persistLocal();if(db)try{await FS.deleteDoc(FS.doc(db,"rounds",id))}catch(e){}renderHistory()}}
   else $("dDel").onclick=()=>{delAsk=true;renderDetail()};
+}
+
+/* ---------- Claudeに相談用のテキスト ---------- */
+function roundText(r){
+  const t=rSum(r),{y,md}=fmtDate(r.date);
+  const L=[`■ ${y}/${md} ${r.course}（${r.front} → ${r.back}・${r.tee}ティー）`,
+    `スコア ${t.s}（パー比 ${rel(t.s-t.par)}、${t.n}ホール）／パット ${t.p}／パーオン ${t.g}/${t.n}`];
+  r.holes.forEach((h,i)=>{if(!played(h)&&!h.memo)return;
+    const sh=h.shots.map(c=>c==="PT"?"パター":c).join("→");
+    L.push(`${halfName(r,i)} ${hnum(r,i)}番 パー${h.par}${h.yd?` ${h.yd}yd`:""}：${played(h)?`${strokes(h)}打（${rel(strokes(h)-h.par)}）${putts(h)}パット${isGIR(h)?"・パーオン":""}／${sh}`:"未入力"}${h.memo?`／メモ：${h.memo.replace(/\s*\n\s*/g," ")}`:""}`)});
+  if(r.memo)L.push(`ラウンドのメモ：${r.memo.replace(/\s*\n\s*/g," ")}`);
+  return L.join("\n");
+}
+function exportText(list){
+  return ["子どものゴルフのラウンド記録です。パット・パーオン・クラブの使い方・メモの内容から傾向を見て、良かった点と、次の練習で意識することを教えてください。",
+    "（打った順のクラブを「→」でつないでいます。「パター」はパターで打った打数、「ペナ」は罰打です。パーオンは、パターの前までの打数がパー−2以内のホールです。）","",
+    ...list.map(roundText).join("\n\n").split("\n")].join("\n");
+}
+function copyFor(btn,box,text){
+  const done=()=>{btn.textContent="コピーしました。Claudeのチャットに貼ってください";setTimeout(()=>btn.textContent=btn.dataset.label,4000)};
+  const fallback=()=>{box.hidden=false;box.innerHTML=`<p class="note">自動でコピーできなかったので、下の文字を長押しして全部選び、コピーしてください。</p><textarea readonly></textarea>`;const ta=box.querySelector("textarea");ta.value=text;ta.focus();ta.select()};
+  btn.dataset.label=btn.dataset.label||btn.textContent;
+  try{navigator.clipboard.writeText(text).then(done,fallback)}catch(e){fallback()}
 }
 
 /* ---------- 統計 ---------- */
@@ -529,6 +557,7 @@ function renderStats(){
   // trend
   const trend=rs.slice().reverse().map(([,r])=>{const t=rSum(r);return {d:fmtDate(r.date).md,pp:t.p/t.n*18,gir:t.g/t.n,sc:(t.s/t.n)*18,n:t.n}});
   el.innerHTML=`<h2>統計</h2>${filt}
+  <div class="card"><div class="row"><button class="btn ask" id="sAsk">表示中の${rs.length}ラウンドをClaudeに相談用にコピー</button></div><p class="note">上で選んだゴルフ場・回数のラウンドをまとめてコピーします。Claudeのチャットに貼って送ると、傾向とアドバイスが返ってきます。</p><div class="copybox" id="sBox" hidden></div></div>
   <div class="kpis">
     <div class="kpi"><span>平均パット</span><b>${(P/n*18).toFixed(1)}</b><small>18ホール換算 ・ 1H ${(P/n).toFixed(2)}</small></div>
     <div class="kpi"><span>パーオン率</span><b>${Math.round(G/n*100)}%</b><small>${G}/${n}ホール</small></div>
@@ -560,7 +589,7 @@ function renderStats(){
   </div>`;
   bindSF();
 }
-function bindSF(){$("sfC").onchange=e=>{SF.course=e.target.value;renderStats()};$("sfN").onchange=e=>{SF.n=e.target.value;renderStats()}}
+function bindSF(){const b=$("sAsk");if(b)b.onclick=()=>{let rs=sortedRounds().filter(([,r])=>rSum(r).n>0&&(!SF.course||r.course===SF.course));if(SF.n!=="all")rs=rs.slice(0,+SF.n);copyFor(b,$("sBox"),exportText(rs.slice().reverse().map(x=>x[1])))};$("sfC").onchange=e=>{SF.course=e.target.value;renderStats()};$("sfN").onchange=e=>{SF.n=e.target.value;renderStats()}}
 function trendChart(T){
   const W=560,H=200,L=34,R=40,Tp=14,B=28,iw=W-L-R,ih=H-Tp-B;
   const maxP=Math.max(40,Math.ceil(Math.max(...T.map(t=>t.pp))/20)*20);
