@@ -110,7 +110,7 @@ h2{margin:0;font-size:16px}
 .club.flash{background:var(--green);color:#fff;border-color:var(--green)}
 .club.putter{grid-column:span 2;background:var(--putt);color:#fff;border-color:var(--putt);font-size:17px}
 .club.pen{background:var(--pen-soft);color:var(--pen);border-color:transparent}
-.club.undo{background:transparent;color:var(--muted)}
+.club.undo{background:transparent;color:var(--muted);grid-column:span 4;min-height:40px}
 .padlabel{font-size:12px;color:var(--muted)}
 .nav{display:flex;gap:8px}
 .nav .btn{flex:1;min-height:48px}
@@ -241,7 +241,9 @@ const AUTH={auth:getAuth(app),onAuthStateChanged,signInWithEmailAndPassword,sign
 const FS={doc,collection,setDoc,getDoc,deleteDoc,onSnapshot,writeBatch};
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
 
-const CLUBS=["1W","3W","5W","UT","5I","6I","7I","8I","9I","PW","AW","SW"];
+const CLUBS=["1W","3W","5W","UT","5I","6I","7I","8I","9I","PW","AW","54°","58°"];
+/* 以前の記録の「SW」は54度として扱う */
+const CLUB_ALIAS={"SW":"54°"};
 const TEES=[["青","#2f5fb3"],["白","#ffffff"],["ゴールド","#c9a227"],["赤","#c23b2f"]];
 const teeColor=t=>(TEES.find(x=>x[0]===t)||["","#999"])[1];
 /* 登録済みコース（公式サイトのスコアカードより）: 青=バック 白=レギュラー ゴールド=フロント 赤=レディース */
@@ -271,6 +273,12 @@ const PRESETS={"c-ogori":{name:"小郡カンツリー倶楽部",halves:["西","�
     北:mkHalf([4,3,4,3,4,5,4,4,5],[342,168,357,182,407,563,384,372,531],[320,150,317,165,382,535,363,355,508],[301,130,285,150,360,503,340,335,482]),
     西:mkHalf([5,4,4,4,4,3,4,3,5],[490,330,310,365,335,160,356,205,600],[470,312,285,351,310,150,335,172,570],[450,294,260,323,290,133,320,143,530]),
     南:mkHalf([4,4,3,4,5,3,5,4,4],[402,368,182,407,502,182,586,453,417],[387,327,160,386,480,165,533,347,402],[367,297,132,363,470,156,511,335,371])}},
+  /* ララヒルズ油山（旧 油山ゴルフクラブ）: 楽天GORAのコース情報より。ティーは1種類（メイン）なので白に登録 */
+  "c-lalahills":{name:"ララヒルズ油山",halves:["OUT","IN"],
+  teeNames:{白:"メイン"},
+  data:{
+    OUT:mkHalf([4,4,4,3,4,3,4,4,3],null,[250,185,340,115,330,75,225,250,110]),
+    IN:mkHalf([4,4,4,3,4,3,4,4,3],null,[245,180,345,110,335,110,230,225,105])}},
   "c-sevenmillion":{name:"セブンミリオンカントリークラブ",halves:["背振 OUT Aグリーン","那珂 IN Aグリーン","背振 OUT Bグリーン","那珂 IN Bグリーン"],
   teeNames:{青:"バック",白:"レギュラー"},
   data:{
@@ -306,7 +314,7 @@ function normRound(o){o=o&&typeof o==="object"?o:{};
   return {date:o.date||today(),course:ALIAS[o.course]||o.course||"",front:o.front||"OUT",back:o.back||"IN",tee:o.tee||"白",memo:typeof o.memo==="string"?o.memo:"",
     created:o.created||"",updated:o.updated||"",
     holes:hs.map(h=>({par:[3,4,5].includes(+(h&&h.par))?+h.par:4,yd:parseInt(h&&h.yd)||0,
-      shots:Array.isArray(h&&h.shots)?h.shots.filter(x=>typeof x==="string"):[],memo:typeof(h&&h.memo)==="string"?h.memo:""}))}}
+      shots:Array.isArray(h&&h.shots)?h.shots.filter(x=>typeof x==="string").map(x=>CLUB_ALIAS[x]||x):[],memo:typeof(h&&h.memo)==="string"?h.memo:""}))}}
 function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 const strokes=h=>h.shots.length;
 const putts=h=>h.shots.filter(c=>c==="PT").length;
@@ -390,7 +398,7 @@ function renderPlay(){
       <div class="hs p"><b id="hPutt">${putts(h)}</b><span>パット</span></div>
       <div class="hs r"><b>${played(h)?rel(strokes(h)-h.par):"−"}</b><span>パー比</span></div>
     </div>
-    <div class="shots">${h.shots.length?h.shots.map((c,i)=>`<span class="shot${c==="PT"?" pt":c==="ペナ"?" pen":""}"><i>${i+1}</i>${c==="PT"?"パター":esc(c)}</span>`).join("")+(isGIR(h)?'<span class="gir">パーオン</span>':""):'<span class="empty">打ったクラブを順番にタップしてください</span>'}</div>
+    <div class="shots">${h.shots.length?h.shots.map((c,i)=>`<span class="shot${c==="PT"?" pt":c==="ペナ"?" pen":""}"><i>${i+1}</i>${c==="PT"?"パター":esc(c)}</span>`).join("")+(isGIR(h)&&h.shots.includes("PT")?'<span class="gir">パーオン</span>':""):'<span class="empty">打ったクラブを順番にタップしてください</span>'}</div>
     <div class="pad">${CLUBS.map(c=>`<button class="club" data-c="${c}">${c}</button>`).join("")}
       <button class="club putter" data-c="PT">パター</button><button class="club pen" data-c="ペナ">ペナ +1</button><button class="club undo" id="undo">1つ戻す</button></div>
     <div class="memo"><label for="holeMemo">このホールのメモ</label><textarea id="holeMemo" placeholder="例：2打目は残り120yd、PWでグリーン右">${esc(h.memo)}</textarea></div>
