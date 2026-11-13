@@ -120,7 +120,9 @@ h2{margin:0;font-size:16px}
 textarea{width:100%;min-height:64px;resize:vertical;font-size:16px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;line-height:1.5}
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
-.tw{overflow-x:auto}
+.tw{overflow-x:auto;max-width:100%}
+.wrap>*,.card,#detail{min-width:0;max-width:100%}
+.sc th:first-child{white-space:nowrap;position:sticky;left:0;background:var(--surface);z-index:1;padding-right:6px}
 table.sc{border-collapse:collapse;width:100%;font-size:13px;min-width:500px}
 .sc th,.sc td{border-bottom:1px solid var(--line);padding:5px 3px;text-align:center}
 .sc th{font-weight:500;color:var(--muted);font-size:11px}
@@ -273,12 +275,12 @@ const PRESETS={"c-ogori":{name:"小郡カンツリー倶楽部",halves:["西","�
     北:mkHalf([4,3,4,3,4,5,4,4,5],[342,168,357,182,407,563,384,372,531],[320,150,317,165,382,535,363,355,508],[301,130,285,150,360,503,340,335,482]),
     西:mkHalf([5,4,4,4,4,3,4,3,5],[490,330,310,365,335,160,356,205,600],[470,312,285,351,310,150,335,172,570],[450,294,260,323,290,133,320,143,530]),
     南:mkHalf([4,4,3,4,5,3,5,4,4],[402,368,182,407,502,182,586,453,417],[387,327,160,386,480,165,533,347,402],[367,297,132,363,470,156,511,335,371])}},
-  /* ララヒルズ油山（旧 油山ゴルフクラブ）: 楽天GORAのコース情報より。ティーは1種類（メイン）なので白に登録 */
+  /* ララヒルズ油山: 10ホールをOUTとINで違うティーから回る全20ホール（パー72）。1〜8番は楽天GORA、9・10番と合計は公式サイト。ティーは1種類なので白に登録 */
   "c-lalahills":{name:"ララヒルズ油山",halves:["OUT","IN"],
   teeNames:{白:"メイン"},
   data:{
-    OUT:mkHalf([4,4,4,3,4,3,4,4,3],null,[250,185,340,115,330,75,225,250,110]),
-    IN:mkHalf([4,4,4,3,4,3,4,4,3],null,[245,180,345,110,335,110,230,225,105])}},
+    OUT:mkHalf([4,4,4,3,4,3,4,4,3,3],null,[250,185,340,115,330,75,225,250,110,130]),
+    IN:mkHalf([4,4,4,3,4,3,4,4,3,3],null,[245,180,345,110,335,110,230,225,105,135])}},
   "c-sevenmillion":{name:"セブンミリオンカントリークラブ",halves:["背振 OUT Aグリーン","那珂 IN Aグリーン","背振 OUT Bグリーン","那珂 IN Bグリーン"],
   teeNames:{青:"バック",白:"レギュラー"},
   data:{
@@ -310,8 +312,9 @@ ensurePresets();
 
 /* ---------- data helpers ---------- */
 function normRound(o){o=o&&typeof o==="object"?o:{};
-  const hs=Array.isArray(o.holes)&&o.holes.length===18?o.holes:Array.from({length:18},()=>({}));
-  return {date:o.date||today(),course:ALIAS[o.course]||o.course||"",front:o.front||"OUT",back:o.back||"IN",tee:o.tee||"白",memo:typeof o.memo==="string"?o.memo:"",
+  const nF=[9,10].includes(+o.nF)?+o.nF:9,nB=[9,10].includes(+o.nB)?+o.nB:9,N=nF+nB;
+  const hs=Array.isArray(o.holes)&&o.holes.length===N?o.holes:Array.from({length:N},(_,i)=>(Array.isArray(o.holes)&&o.holes[i])||{});
+  return {nF,nB,date:o.date||today(),course:ALIAS[o.course]||o.course||"",front:o.front||"OUT",back:o.back||"IN",tee:o.tee||"白",memo:typeof o.memo==="string"?o.memo:"",
     created:o.created||"",updated:o.updated||"",
     holes:hs.map(h=>({par:[3,4,5].includes(+(h&&h.par))?+h.par:4,yd:parseInt(h&&h.yd)||0,
       shots:Array.isArray(h&&h.shots)?h.shots.filter(x=>typeof x==="string").map(x=>CLUB_ALIAS[x]||x):[],memo:typeof(h&&h.memo)==="string"?h.memo:""}))}}
@@ -323,8 +326,13 @@ function toGreen(h){const i=h.shots.indexOf("PT");return i<0?h.shots.length:i}
 const isGIR=h=>played(h)&&toGreen(h)<=h.par-2;
 function greenClub(h){const i=h.shots.indexOf("PT");if(i<=0)return null;const c=h.shots[i-1];return c==="ペナ"?null:c}
 const rel=n=>n===0?"±0":(n>0?"+"+n:"−"+(-n));
-const hnum=(r,i)=>((i<9?r.front:r.back).includes("IN")?10:1)+(i%9);
-const halfName=(r,i)=>(i<9?r.front:r.back);
+/* 前半 nF ホール・後半 nB ホール（通常は9・9、ララヒルズ油山は10・10） */
+const nF=r=>r.nF||9,nB=r=>r.nB||9,NH=r=>nF(r)+nB(r);
+const HALVES=r=>[[0,nF(r)],[nF(r),nB(r)]];
+const isFront=(r,i)=>i<nF(r);
+const hnum=(r,i)=>{const f=isFront(r,i),k=f?i:i-nF(r),n=f?nF(r):nB(r);return ((n===9&&(f?r.front:r.back).includes("IN"))?10:1)+k};
+const halfName=(r,i)=>(isFront(r,i)?r.front:r.back);
+function halfLen(course,half){const c=courseByName(course);const d=c&&c.data&&c.data[half];if(d){const t=Object.values(d)[0];if(t&&Array.isArray(t.par)&&[9,10].includes(t.par.length))return t.par.length}return 9}
 function rSum(r){let s=0,p=0,par=0,n=0,g=0;r.holes.forEach(h=>{if(played(h)){s+=strokes(h);p+=putts(h);par+=h.par;n++;if(isGIR(h))g++}});return {s,p,par,n,g}}
 function sortedRounds(){return Object.entries(ROUNDS).sort((a,b)=>(b[1].date+b[1].created).localeCompare(a[1].date+a[1].created))}
 function fmtDate(d){const [y,m,dd]=d.split("-");return {y,md:`${+m}/${+dd}`}}
@@ -346,8 +354,8 @@ function learnCourse(r){
   let c=courseByName(r.course),id=c?Object.keys(COURSES).find(k=>COURSES[k]===c):courseKey(r.course);
   if(!c){c={name:r.course,halves:[r.front,r.back].filter((v,i,a)=>a.indexOf(v)===i),data:{}};COURSES[id]=c}
   let changed=false;
-  [[r.front,0],[r.back,9]].forEach(([half,off])=>{
-    const par=r.holes.slice(off,off+9).map(h=>h.par),yd=r.holes.slice(off,off+9).map(h=>h.yd);
+  [[r.front,0,nF(r)],[r.back,nF(r),nB(r)]].forEach(([half,off,n])=>{
+    const par=r.holes.slice(off,off+n).map(h=>h.par),yd=r.holes.slice(off,off+n).map(h=>h.yd);
     if(!yd.some(v=>v>0))return;
     c.data=c.data||{};c.data[half]=c.data[half]||{};
     const old=c.data[half][r.tee];
@@ -372,9 +380,9 @@ function go(v){if(location.hash==="#"+v)route();else location.hash=v}
 function renderPlay(){
   const el=$("v-play");
   if(!openId||!ROUNDS[openId]){el.innerHTML=`<div class="card"><h2>記録中のラウンドはありません</h2><p class="note">「履歴」タブの「新しいラウンド」から始めるか、過去のラウンドを開いて続きを入力できます。</p><button class="btn pri" onclick="go('history');setTimeout(openNew,0)">＋ 新しいラウンドを始める</button></div>`;return}
-  const r=ROUNDS[openId];if(cur<0||cur>17)cur=0;
+  const r=ROUNDS[openId];if(cur<0||cur>NH(r)-1)cur=0;
   const t=rSum(r),{y,md}=fmtDate(r.date);
-  const ydF=r.holes.slice(0,9).reduce((a,h)=>a+h.yd,0),ydB=r.holes.slice(9).reduce((a,h)=>a+h.yd,0);
+  const ydF=r.holes.slice(0,nF(r)).reduce((a,h)=>a+h.yd,0),ydB=r.holes.slice(nF(r)).reduce((a,h)=>a+h.yd,0);
   const h=r.holes[cur];
   el.innerHTML=`
   <div class="phead">
@@ -382,9 +390,9 @@ function renderPlay(){
       <div class="sub"><span>${y}/${md}</span><span>・</span><span class="tdot" style="background:${teeColor(r.tee)}"></span><span>${esc(r.tee)}ティー</span>${ydF+ydB?`<span>・</span><span class="num" style="font-size:15px;color:var(--ink)">${(ydF+ydB).toLocaleString()} yd</span>`:""}</div></div>
     <div class="total"><div class="big num">${t.s}</div><small>パット ${t.p}${t.n?` ・ ${rel(t.s-t.par)}`:""}</small></div>
   </div>
-  ${[0,9].map(off=>{const s=r.holes.slice(off,off+9);const ss=s.reduce((a,h)=>a+strokes(h),0),pp=s.reduce((a,h)=>a+putts(h),0);
+  ${HALVES(r).map(([off,n])=>{const s=r.holes.slice(off,off+n);const ss=s.reduce((a,h)=>a+strokes(h),0),pp=s.reduce((a,h)=>a+putts(h),0);
     return `<div><div class="hlabel"><span><b style="color:var(--ink)">${off?"後半":"前半"}</b> ${esc(halfName(r,off))}</span><span class="num" style="font-size:14px">${ss?`${ss}（${pp}パット）`:""}</span></div>
-    <div class="holes">${s.map((h,i)=>`<button class="hbtn${off+i===cur?" on":""}" data-h="${off+i}"><span class="n">${hnum(r,off+i)}</span><span class="s">${strokes(h)||"·"}</span></button>`).join("")}</div></div>`}).join("")}
+    <div class="holes" style="grid-template-columns:repeat(${n},1fr)">${s.map((h,i)=>`<button class="hbtn${off+i===cur?" on":""}" data-h="${off+i}"><span class="n">${hnum(r,off+i)}</span><span class="s">${strokes(h)||"·"}</span></button>`).join("")}</div></div>`}).join("")}
   <section class="hole">
     <div class="hhead">
       <div class="hno"><span>${esc(halfName(r,cur).split(" ")[0])}</span><span class="num">${hnum(r,cur)}</span><span>番</span></div>
@@ -402,7 +410,7 @@ function renderPlay(){
     <div class="pad">${CLUBS.map(c=>`<button class="club" data-c="${c}">${c}</button>`).join("")}
       <button class="club putter" data-c="PT">パター</button><button class="club pen" data-c="ペナ">ペナ +1</button><button class="club undo" id="undo">1つ戻す</button></div>
     <div class="memo"><label for="holeMemo">このホールのメモ</label><textarea id="holeMemo" placeholder="例：2打目は残り120yd、PWでグリーン右">${esc(h.memo)}</textarea></div>
-    <div class="nav"><button class="btn" id="prev" ${cur===0?"disabled":""}>← 前</button><button class="btn pri" id="next">${cur===17?"ラウンドを見る":"次のホール →"}</button></div>
+    <div class="nav"><button class="btn" id="prev" ${cur===0?"disabled":""}>← 前</button><button class="btn pri" id="next">${cur===NH(r)-1?"ラウンドを見る":"次のホール →"}</button></div>
   </section>
   <div class="card memo"><label for="roundMemo"><b style="font-size:15px;color:var(--ink)">ラウンド全体のメモ</b></label><textarea id="roundMemo" placeholder="天気、調子、次の練習で意識すること など">${esc(r.memo)}</textarea></div>`;
   el.querySelectorAll(".hbtn").forEach(b=>b.onclick=()=>{cur=+b.dataset.h;renderPlay()});
@@ -415,7 +423,7 @@ function renderPlay(){
   $("holeMemo").oninput=e=>{h.memo=e.target.value;saveRound(openId)};
   $("roundMemo").oninput=e=>{r.memo=e.target.value;saveRound(openId)};
   $("prev").onclick=()=>{if(cur>0){cur--;renderPlay();scrollTo({top:0})}};
-  $("next").onclick=()=>{if(cur<17){cur++;renderPlay();scrollTo({top:0})}else{detailId=openId;go("history")}};
+  $("next").onclick=()=>{if(cur<NH(r)-1){cur++;renderPlay();scrollTo({top:0})}else{detailId=openId;go("history")}};
 }
 
 /* ---------- 新しいラウンド ---------- */
@@ -455,9 +463,9 @@ function renderNew(){
   $("nfGo").onclick=()=>{
     const name=isNew?NF.newName.trim():NF.course;
     if(!name){$("nfName").focus();$("nfName").placeholder="ゴルフ場の名前を入れてください";return}
-    const r=normRound({date:NF.date||today(),course:name,front:NF.front,back:NF.back,tee:NF.tee});
+    const r=normRound({date:NF.date||today(),course:name,front:NF.front,back:NF.back,tee:NF.tee,nF:isNew?9:halfLen(name,NF.front),nB:isNew?9:halfLen(name,NF.back)});
     r.created=new Date().toISOString();
-    [[NF.front,0],[NF.back,9]].forEach(([half,off])=>{const k=knownHalf(name,half,NF.tee);if(k)for(let i=0;i<9;i++){r.holes[off+i].par=k.par[i]||4;r.holes[off+i].yd=k.yd[i]||0}});
+    [[NF.front,0,r.nF],[NF.back,r.nF,r.nB]].forEach(([half,off,n])=>{const k=knownHalf(name,half,NF.tee);if(k)for(let i=0;i<n;i++){r.holes[off+i].par=k.par[i]||4;r.holes[off+i].yd=k.yd[i]||0}});
     if(isNew){const id=courseKey(name);COURSES[id]={name,halves:halves.length?halves:["OUT","IN"],data:{}};persistLocal();if(db)FS.setDoc(FS.doc(db,"courses",id),COURSES[id]).catch(()=>{})}
     const id="r-"+Date.now().toString(36);ROUNDS[id]=r;openId=id;cur=0;try{localStorage.setItem(LSO,id)}catch(e){}
     saveRound(id);$("newForm").hidden=true;go("play");
@@ -477,11 +485,12 @@ function renderHistory(){
   renderDetail();
 }
 function scorecard(r){
-  const rng=k=>k==="o"?[0,9]:k==="i"?[9,18]:[0,18];
+  const F=nF(r),N=NH(r);
+  const rng=k=>k==="o"?[0,F]:k==="i"?[F,N]:[0,N];
   const sumF=(k,f)=>{const [a,b]=rng(k);let t=0;for(let i=a;i<b;i++)t+=f(r.holes[i]);return t};
-  const row=(lab,f,cls="")=>{let s=`<tr><th>${lab}</th>`;for(let i=0;i<9;i++)s+=`<td class="num ${cls}">${f(i)}</td>`;s+=`<td class="num tot">${f("o")}</td>`;for(let i=9;i<18;i++)s+=`<td class="num ${cls}">${f(i)}</td>`;return s+`<td class="num tot">${f("i")}</td><td class="num tot">${f("t")}</td></tr>`};
-  let h=`<tr><th></th><th colspan="10">${esc(r.front)}</th><th colspan="9">${esc(r.back)}</th><th></th></tr><tr><th>H</th>`;
-  for(let i=0;i<9;i++)h+=`<th>${hnum(r,i)}</th>`;h+=`<th>前</th>`;for(let i=9;i<18;i++)h+=`<th>${hnum(r,i)}</th>`;h+=`<th>後</th><th>計</th></tr>`;
+  const row=(lab,f,cls="")=>{let s=`<tr><th>${lab}</th>`;for(let i=0;i<F;i++)s+=`<td class="num ${cls}">${f(i)}</td>`;s+=`<td class="num tot">${f("o")}</td>`;for(let i=F;i<N;i++)s+=`<td class="num ${cls}">${f(i)}</td>`;return s+`<td class="num tot">${f("i")}</td><td class="num tot">${f("t")}</td></tr>`};
+  let h=`<tr><th></th><th colspan="${F+1}">${esc(r.front)}</th><th colspan="${N-F}">${esc(r.back)}</th><th></th></tr><tr><th>H</th>`;
+  for(let i=0;i<F;i++)h+=`<th>${hnum(r,i)}</th>`;h+=`<th>前</th>`;for(let i=F;i<N;i++)h+=`<th>${hnum(r,i)}</th>`;h+=`<th>後</th><th>計</th></tr>`;
   h+=row("ヤード",k=>typeof k==="number"?(r.holes[k].yd||""):(sumF(k,x=>x.yd)||""),"yrow");
   h+=row("パー",k=>typeof k==="number"?r.holes[k].par:sumF(k,x=>x.par));
   h+=row("打数",k=>{if(typeof k==="number"){const x=r.holes[k],s=strokes(x);if(!s)return"";return `<span class="${s<x.par?"under":s>=x.par+2?"over2":""}">${s}</span>`}return sumF(k,strokes)||""});
